@@ -1,0 +1,41 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --name="beyond_RPA" --onefile --noconsole main.py
+
+    - name: Create ZIP
+      run: |
+        mkdir release
+        copy dist\beyond_RPA.exe release\
+        copy accounts.csv.sample release\
+        Compress-Archive -Path release\* -DestinationPath beyond_RPA.zip
+      shell: pwsh
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: beyond_RPA.zip
+        generate_release_notes: true

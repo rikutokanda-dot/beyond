@@ -1,0 +1,10 @@
+dist/
+build/
+*.spec
+__pycache__/
+.DS_Store
+venv/
+.venv/
+
+# アカウント情報（パスワード含む）- 絶対にコミットしない
+accounts.csv
