@@ -8,7 +8,8 @@ Google Cloud Run で動作し、URLにアクセスするだけで誰でも使え
 ## 使い方（社内メンバー向け）
 
 1. 共有された URL をブラウザで開く
-2. ドロップダウンからアカウントを選択
+2. ログインパスワードを入力（管理者から共有されたもの）
+3. ドロップダウンからアカウントを選択
 3. 「CSVファイルを選択」で処理データの CSV をアップロード
 4. 実行ボタンをクリック
    - **実行 (他を0%にする)**: 複製後、他バージョンの配信割合を 0% に設定
@@ -42,7 +43,8 @@ gcloud run deploy beyond-rpa \
   --timeout 3600 \
   --max-instances 1 \
   --allow-unauthenticated \
-  --set-secrets ACCOUNTS_CSV=accounts-csv:latest
+  --set-secrets ACCOUNTS_CSV=accounts-csv:latest \
+  --set-env-vars APP_PASSWORD=Rj7kXm3qWn
 ```
 
 デプロイ完了後に表示される URL を社内メンバーに共有してください。
@@ -76,6 +78,6 @@ gcloud run services update beyond-rpa --region asia-northeast1
 
 ```bash
 docker build -t beyond-rpa .
-docker run -p 8080:8080 -e ACCOUNTS_CSV="$(cat accounts.csv)" beyond-rpa
+docker run -p 8080:8080 -e ACCOUNTS_CSV="$(cat accounts.csv)" -e APP_PASSWORD=Rj7kXm3qWn beyond-rpa
 # ブラウザで http://localhost:8080 を開く
 ```

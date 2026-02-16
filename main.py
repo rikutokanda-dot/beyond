@@ -24,6 +24,9 @@ BASE_URL = 'https://app.squadbeyond.com/'
 # 並列数
 MAX_WORKERS = 3
 
+# ツール利用パスワード（環境変数から読み込み）
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
 # ChromeDriverパス（Docker内では /usr/bin/chromedriver）
 CHROMEDRIVER_PATH = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
 
@@ -364,189 +367,230 @@ def main(page: ft.Page):
     upload_dir = tempfile.mkdtemp()
     page.upload_dir = upload_dir
 
-    # 選択されたCSVパスを表示するテキスト
-    selected_csv_path = ft.Text("ファイル未選択", size=12, color="grey")
-
     header = ft.Text("SquadBeyond 自動化ツール", size=24, weight="bold")
 
-    if not ACCOUNTS:
-        page.add(
-            header,
-            ft.Text("エラー: アカウント情報が読み込めません。", size=16, color="red"),
-            ft.Text("環境変数 ACCOUNTS_CSV または accounts.csv を確認してください。", size=12),
-        )
-        return
-
-  # アカウント選択用ドロップダウン（accounts.csvから動的生成）
-    account_options = [
-        ft.dropdown.Option(key=key, text=f"{key}: {acc['name']}")
-        for key, acc in ACCOUNTS.items()
-    ]
-    account_dd = ft.Dropdown(
-        label="使用するアカウントを選択",
-        options=account_options,
-        width=400,
-    )
-
     # -----------------------------------------------------------
-    # ファイルアップロード（Web対応）
+    # ログイン画面
     # -----------------------------------------------------------
-    def pick_files_result(e: ft.FilePickerResultEvent):
-        if e.files and len(e.files) > 0:
-            upload_list = [
-                ft.FilePickerUploadFile(
-                    e.files[0].name,
-                    upload_url=page.get_upload_url(e.files[0].name, 600),
-                )
-            ]
-            file_picker.upload(upload_list)
-
-    def on_upload_progress(e: ft.FilePickerUploadProgressEvent):
-        if e.progress == 1.0:
-            uploaded_path = os.path.join(upload_dir, e.file_name)
-            selected_csv_path.value = f"アップロード完了: {e.file_name}"
-            selected_csv_path.color = "black"
-            selected_csv_path.data = uploaded_path
-            selected_csv_path.update()
-
-    file_picker = ft.FilePicker(
-        on_result=pick_files_result,
-        on_upload=on_upload_progress,
+    password_field = ft.TextField(
+        label="パスワード",
+        password=True,
+        can_reveal_password=True,
+        width=300,
     )
-    page.overlay.append(file_picker)
+    login_error = ft.Text("", size=12, color="red")
 
-    def on_click_select_file(_):
-        file_picker.pick_files(
-            allow_multiple=False,
-            allowed_extensions=["csv"],
-        )
-
-    # ファイル選択ボタン
-    btn_select_file = ft.ElevatedButton(
-        text="CSVファイルを選択",
-        icon="upload_file",
-        on_click=on_click_select_file
-    )
-
-    log_list = ft.ListView(expand=True, spacing=5, auto_scroll=True)
-
-    def add_log(message):
-        log_list.controls.append(ft.Text(message, size=12))
-        page.update()
-
-    # 共通の実行処理
-    def start_process(reset_rates_mode):
-        if not account_dd.value:
-            add_log("【エラー】アカウントを選択してください！")
-            return
-
-        csv_path = getattr(selected_csv_path, 'data', None)
-        if not csv_path:
-            add_log("【エラー】CSVファイルをアップロードしてください！")
-            return
-
-        selected_account = ACCOUNTS[account_dd.value]
-
-        btn_reset.disabled = True
-        btn_skip.disabled = True
-        btn_select_file.disabled = True
-
-        if reset_rates_mode:
-            add_log("【モード】他を0%にして実行します")
+    def on_login(_):
+        if password_field.value == APP_PASSWORD:
+            page.controls.clear()
+            page.update()
+            show_main_ui()
         else:
-            add_log("【モード】割合変更なしで実行します")
+            login_error.value = "パスワードが違います"
+            login_error.update()
 
-        page.update()
+    page.add(
+        ft.Container(
+            content=ft.Column(
+                [
+                    header,
+                    ft.Text("利用するにはパスワードを入力してください", size=14),
+                    password_field,
+                    login_error,
+                    ft.ElevatedButton("ログイン", on_click=on_login),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=15,
+            ),
+            padding=50,
+        )
+    )
 
-        t = threading.Thread(target=run_process_thread, args=(selected_account, reset_rates_mode, csv_path))
-        t.start()
+    # -----------------------------------------------------------
+    # メインUI（ログイン後に表示）
+    # -----------------------------------------------------------
+    def show_main_ui():
+        # 選択されたCSVパスを表示するテキスト
+        selected_csv_path = ft.Text("ファイル未選択", size=12, color="grey")
 
-    # 裏側で動くメイン処理
-    def run_process_thread(selected_account, reset_rates, csv_path):
-        try:
-            add_log(f"CSVを読み込みます: {os.path.basename(csv_path)}")
+        if not ACCOUNTS:
+            page.add(
+                header,
+                ft.Text("エラー: アカウント情報が読み込めません。", size=16, color="red"),
+                ft.Text("環境変数 ACCOUNTS_CSV または accounts.csv を確認してください。", size=12),
+            )
+            return
 
-            try:
-                df = pd.read_csv(csv_path, header=None)
-            except Exception as e:
-                add_log(f"エラー: ファイル読み込み失敗 -> {e}")
-                return
+        # アカウント選択用ドロップダウン（accounts.csvから動的生成）
+        account_options = [
+            ft.dropdown.Option(key=key, text=f"{key}: {acc['name']}")
+            for key, acc in ACCOUNTS.items()
+        ]
+        account_dd = ft.Dropdown(
+            label="使用するアカウントを選択",
+            options=account_options,
+            width=400,
+        )
 
-            add_log("ドライバ準備完了。")
-
-            cookies = get_session_cookies(selected_account, add_log)
-            if not cookies:
-                add_log("ログインに失敗したため、処理を終了します。")
-                return
-
-            total_rows = len(df)
-            if total_rows == 0:
-                add_log("データがありません")
-                return
-
-            chunk_size = math.ceil(total_rows / MAX_WORKERS)
-            chunks = []
-            for i in range(0, total_rows, chunk_size):
-                chunks.append(df.iloc[i:i + chunk_size])
-
-            add_log(f"合計 {total_rows} 件のデータを {len(chunks)} 分割して並列処理します。")
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                futures = []
-                for i, df_subset in enumerate(chunks):
-                    worker_id = i + 1
-                    if i > 0:
-                        add_log(f"次のブラウザ起動まで 5秒 待機します...")
-                        time.sleep(5)
-
-                    futures.append(
-                        executor.submit(run_automation_worker, worker_id, df_subset, cookies, add_log, reset_rates)
+        # -----------------------------------------------------------
+        # ファイルアップロード（Web対応）
+        # -----------------------------------------------------------
+        def pick_files_result(e: ft.FilePickerResultEvent):
+            if e.files and len(e.files) > 0:
+                upload_list = [
+                    ft.FilePickerUploadFile(
+                        e.files[0].name,
+                        upload_url=page.get_upload_url(e.files[0].name, 600),
                     )
+                ]
+                file_picker.upload(upload_list)
 
-                concurrent.futures.wait(futures)
+        def on_upload_progress(e: ft.FilePickerUploadProgressEvent):
+            if e.progress == 1.0:
+                uploaded_path = os.path.join(upload_dir, e.file_name)
+                selected_csv_path.value = f"アップロード完了: {e.file_name}"
+                selected_csv_path.color = "black"
+                selected_csv_path.data = uploaded_path
+                selected_csv_path.update()
 
-            add_log("全並列処理が完了しました。")
+        file_picker = ft.FilePicker(
+            on_result=pick_files_result,
+            on_upload=on_upload_progress,
+        )
+        page.overlay.append(file_picker)
 
-        except Exception as e:
-            add_log(f"予期せぬエラーが発生しました: {e}")
-        finally:
-            btn_reset.disabled = False
-            btn_skip.disabled = False
-            btn_select_file.disabled = False
+        def on_click_select_file(_):
+            file_picker.pick_files(
+                allow_multiple=False,
+                allowed_extensions=["csv"],
+            )
+
+        # ファイル選択ボタン
+        btn_select_file = ft.ElevatedButton(
+            text="CSVファイルを選択",
+            icon="upload_file",
+            on_click=on_click_select_file
+        )
+
+        log_list = ft.ListView(expand=True, spacing=5, auto_scroll=True)
+
+        def add_log(message):
+            log_list.controls.append(ft.Text(message, size=12))
             page.update()
 
-    # 実行ボタン
-    btn_reset = ft.ElevatedButton(
-        text="実行 (他を0%にする)",
-        on_click=lambda e: start_process(True),
-        height=50,
-        bgcolor="red100",
-        color="red900"
-    )
+        # 共通の実行処理
+        def start_process(reset_rates_mode):
+            if not account_dd.value:
+                add_log("【エラー】アカウントを選択してください！")
+                return
 
-    btn_skip = ft.ElevatedButton(
-        text="実行 (割合変更なし)",
-        on_click=lambda e: start_process(False),
-        height=50
-    )
+            csv_path = getattr(selected_csv_path, 'data', None)
+            if not csv_path:
+                add_log("【エラー】CSVファイルをアップロードしてください！")
+                return
 
-    # 画面レイアウト
-    page.add(
-        header,
-        account_dd,
-        ft.Divider(),
-        ft.Text("CSVファイル選択:"),
-        ft.Row([btn_select_file, selected_csv_path], alignment="start", vertical_alignment="center"),
-        ft.Divider(),
-        ft.Row([btn_reset, btn_skip], alignment="center", spacing=20),
-        ft.Text("実行ログ:"),
-        ft.Container(
-            content=log_list,
-            border=ft.border.all(1, "grey"),
-            border_radius=5,
-            padding=10,
-            height=300,
+            selected_account = ACCOUNTS[account_dd.value]
+
+            btn_reset.disabled = True
+            btn_skip.disabled = True
+            btn_select_file.disabled = True
+
+            if reset_rates_mode:
+                add_log("【モード】他を0%にして実行します")
+            else:
+                add_log("【モード】割合変更なしで実行します")
+
+            page.update()
+
+            t = threading.Thread(target=run_process_thread, args=(selected_account, reset_rates_mode, csv_path))
+            t.start()
+
+        # 裏側で動くメイン処理
+        def run_process_thread(selected_account, reset_rates, csv_path):
+            try:
+                add_log(f"CSVを読み込みます: {os.path.basename(csv_path)}")
+
+                try:
+                    df = pd.read_csv(csv_path, header=None)
+                except Exception as e:
+                    add_log(f"エラー: ファイル読み込み失敗 -> {e}")
+                    return
+
+                add_log("ドライバ準備完了。")
+
+                cookies = get_session_cookies(selected_account, add_log)
+                if not cookies:
+                    add_log("ログインに失敗したため、処理を終了します。")
+                    return
+
+                total_rows = len(df)
+                if total_rows == 0:
+                    add_log("データがありません")
+                    return
+
+                chunk_size = math.ceil(total_rows / MAX_WORKERS)
+                chunks = []
+                for i in range(0, total_rows, chunk_size):
+                    chunks.append(df.iloc[i:i + chunk_size])
+
+                add_log(f"合計 {total_rows} 件のデータを {len(chunks)} 分割して並列処理します。")
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                    futures = []
+                    for i, df_subset in enumerate(chunks):
+                        worker_id = i + 1
+                        if i > 0:
+                            add_log(f"次のブラウザ起動まで 5秒 待機します...")
+                            time.sleep(5)
+
+                        futures.append(
+                            executor.submit(run_automation_worker, worker_id, df_subset, cookies, add_log, reset_rates)
+                        )
+
+                    concurrent.futures.wait(futures)
+
+                add_log("全並列処理が完了しました。")
+
+            except Exception as e:
+                add_log(f"予期せぬエラーが発生しました: {e}")
+            finally:
+                btn_reset.disabled = False
+                btn_skip.disabled = False
+                btn_select_file.disabled = False
+                page.update()
+
+        # 実行ボタン
+        btn_reset = ft.ElevatedButton(
+            text="実行 (他を0%にする)",
+            on_click=lambda e: start_process(True),
+            height=50,
+            bgcolor="red100",
+            color="red900"
         )
-    )
+
+        btn_skip = ft.ElevatedButton(
+            text="実行 (割合変更なし)",
+            on_click=lambda e: start_process(False),
+            height=50
+        )
+
+        # 画面レイアウト
+        page.add(
+            ft.Text("SquadBeyond 自動化ツール", size=24, weight="bold"),
+            account_dd,
+            ft.Divider(),
+            ft.Text("CSVファイル選択:"),
+            ft.Row([btn_select_file, selected_csv_path], alignment="start", vertical_alignment="center"),
+            ft.Divider(),
+            ft.Row([btn_reset, btn_skip], alignment="center", spacing=20),
+            ft.Text("実行ログ:"),
+            ft.Container(
+                content=log_list,
+                border=ft.border.all(1, "grey"),
+                border_radius=5,
+                padding=10,
+                height=300,
+            )
+        )
 
 ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=int(os.environ.get("PORT", 8080)))
