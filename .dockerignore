@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+venv
+.venv
+__pycache__
+dist
+build
+*.spec
+accounts.csv
+accounts.csv.sample
+.DS_Store
+*.md

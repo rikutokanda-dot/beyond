@@ -1,8 +1,12 @@
-name: Build Windows Exe
+name: Build & Release
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -25,8 +29,16 @@ jobs:
       run: |
         pyinstaller --name="beyond_RPA" --onefile --noconsole main.py
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+    - name: Create ZIP
+      run: |
+        mkdir release
+        copy dist\beyond_RPA.exe release\
+        copy accounts.csv.sample release\
+        Compress-Archive -Path release\* -DestinationPath beyond_RPA.zip
+      shell: pwsh
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
       with:
-        name: Windows_Exe_File
-        path: dist/beyond_RPA.exe
+        files: beyond_RPA.zip
+        generate_release_notes: true

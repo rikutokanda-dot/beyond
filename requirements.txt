@@ -1,5 +1,3 @@
 flet
 pandas
 selenium
-webdriver-manager
-pyinstaller
